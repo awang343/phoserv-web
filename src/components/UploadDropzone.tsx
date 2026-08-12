@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getTagTree, uploadPhoto } from "@/lib/api";
-import { flattenTagPaths } from "@/lib/tags";
+import { useState } from "react";
+import { uploadPhoto } from "@/lib/api";
 import TagChipsInput from "./TagChipsInput";
 
 type FileStatus = "pending" | "uploading" | "done" | "error";
@@ -13,18 +12,15 @@ interface QueuedFile {
   error?: string;
 }
 
-export default function UploadDropzone() {
+export default function UploadDropzone({
+  tagSuggestions = [],
+}: {
+  tagSuggestions?: string[];
+}) {
   const [files, setFiles] = useState<QueuedFile[]>([]);
   const [tags, setTags] = useState<string[]>([]);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    getTagTree()
-      .then((tree) => setSuggestions(flattenTagPaths(tree)))
-      .catch(() => {});
-  }, []);
 
   const addFiles = (fileList: FileList | null) => {
     if (!fileList) return;
@@ -91,7 +87,7 @@ export default function UploadDropzone() {
         <p className="text-sm font-medium mb-1">Tags (applied to all files in this batch)</p>
         <TagChipsInput
           tags={tags}
-          suggestions={suggestions}
+          suggestions={tagSuggestions}
           onAdd={(tag) => setTags((prev) => (prev.includes(tag) ? prev : [...prev, tag]))}
           onRemove={(tag) => setTags((prev) => prev.filter((t) => t !== tag))}
         />

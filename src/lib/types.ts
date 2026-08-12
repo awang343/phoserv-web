@@ -17,7 +17,7 @@ export interface PhotoListResponse {
   photos: Photo[];
   total: number;
   limit: number;
-  offset: number;
+  next_cursor: string | null;
 }
 
 export interface TagNode {
