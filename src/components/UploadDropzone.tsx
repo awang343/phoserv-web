@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { uploadPhoto } from "@/lib/api";
+import { useEffect, useState } from "react";
+import { addPhotosToGallery, createGallery, listGalleries, uploadPhoto } from "@/lib/api";
+import type { Gallery } from "@/lib/types";
 import TagChipsInput from "./TagChipsInput";
 
 type FileStatus = "pending" | "uploading" | "done" | "error";
@@ -10,6 +11,18 @@ interface QueuedFile {
   file: File;
   status: FileStatus;
   error?: string;
+  photoId?: string;
+}
+
+const NEW_GALLERY = "__new__";
+
+// Keeps the queue in filename order so a folder of "page01.jpg, page02.jpg, ..."
+// uploads (and lands in the target gallery) in the same order regardless of
+// the order the OS/browser handed us the files in.
+function sortByName(files: QueuedFile[]): QueuedFile[] {
+  return [...files].sort((a, b) =>
+    a.file.name.localeCompare(b.file.name, undefined, { numeric: true, sensitivity: "base" }),
+  );
 }
 
 export default function UploadDropzone({
@@ -21,11 +34,21 @@ export default function UploadDropzone({
   const [tags, setTags] = useState<string[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [galleries, setGalleries] = useState<Gallery[]>([]);
+  const [targetGallery, setTargetGallery] = useState("");
+  const [newGalleryTitle, setNewGalleryTitle] = useState("");
+  const [galleryResult, setGalleryResult] = useState<string | null>(null);
+
+  useEffect(() => {
+    listGalleries()
+      .then(setGalleries)
+      .catch(() => {});
+  }, []);
 
   const addFiles = (fileList: FileList | null) => {
     if (!fileList) return;
     const next = Array.from(fileList).map((file) => ({ file, status: "pending" as FileStatus }));
-    setFiles((prev) => [...prev, ...next]);
+    setFiles((prev) => sortByName([...prev, ...next]));
   };
 
   const removeFile = (index: number) => {
@@ -34,12 +57,18 @@ export default function UploadDropzone({
 
   const uploadAll = async () => {
     setSubmitting(true);
+    setGalleryResult(null);
+    const uploadedIds: string[] = [];
     for (let i = 0; i < files.length; i++) {
-      if (files[i].status === "done") continue;
+      if (files[i].status === "done") {
+        if (files[i].photoId) uploadedIds.push(files[i].photoId!);
+        continue;
+      }
       setFiles((prev) => prev.map((f, idx) => (idx === i ? { ...f, status: "uploading" } : f)));
       try {
-        await uploadPhoto(files[i].file, tags);
-        setFiles((prev) => prev.map((f, idx) => (idx === i ? { ...f, status: "done" } : f)));
+        const photo = await uploadPhoto(files[i].file, tags);
+        uploadedIds.push(photo.id);
+        setFiles((prev) => prev.map((f, idx) => (idx === i ? { ...f, status: "done", photoId: photo.id } : f)));
       } catch (err) {
         setFiles((prev) =>
           prev.map((f, idx) =>
@@ -48,6 +77,32 @@ export default function UploadDropzone({
         );
       }
     }
+
+    if (targetGallery && uploadedIds.length > 0) {
+      try {
+        let galleryId = targetGallery;
+        let title = galleries.find((g) => g.id === targetGallery)?.title ?? "";
+        if (targetGallery === NEW_GALLERY) {
+          const trimmedTitle = newGalleryTitle.trim();
+          if (!trimmedTitle) {
+            setGalleryResult("Enter a title for the new gallery before uploading.");
+            setSubmitting(false);
+            return;
+          }
+          const created = await createGallery(trimmedTitle);
+          galleryId = created.id;
+          title = created.title;
+          setGalleries((prev) => [created, ...prev]);
+          setTargetGallery(created.id);
+          setNewGalleryTitle("");
+        }
+        await addPhotosToGallery(galleryId, uploadedIds);
+        setGalleryResult(`Added ${uploadedIds.length} photo${uploadedIds.length === 1 ? "" : "s"} to "${title}".`);
+      } catch (e) {
+        setGalleryResult(e instanceof Error ? e.message : "Failed to add photos to gallery");
+      }
+    }
+
     setSubmitting(false);
   };
 
@@ -93,6 +148,35 @@ export default function UploadDropzone({
         />
       </div>
 
+      <div>
+        <p className="text-sm font-medium mb-1">Add to gallery (uploaded in filename order)</p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <select
+            value={targetGallery}
+            onChange={(e) => setTargetGallery(e.target.value)}
+            className="border border-neutral-300 dark:border-neutral-700 rounded px-2 py-1 text-sm bg-transparent"
+          >
+            <option value="">None</option>
+            {galleries.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.title}
+              </option>
+            ))}
+            <option value={NEW_GALLERY}>+ New gallery…</option>
+          </select>
+          {targetGallery === NEW_GALLERY && (
+            <input
+              type="text"
+              autoFocus
+              value={newGalleryTitle}
+              onChange={(e) => setNewGalleryTitle(e.target.value)}
+              placeholder="Gallery title"
+              className="border border-neutral-300 dark:border-neutral-700 rounded px-2 py-1 text-sm bg-transparent"
+            />
+          )}
+        </div>
+      </div>
+
       {files.length > 0 && (
         <ul className="divide-y divide-neutral-200 dark:divide-neutral-800 border border-neutral-200 dark:border-neutral-800 rounded">
           {files.map((f, i) => (
@@ -122,6 +206,8 @@ export default function UploadDropzone({
           ))}
         </ul>
       )}
+
+      {galleryResult && <p className="text-sm text-neutral-600 dark:text-neutral-400">{galleryResult}</p>}
 
       <button
         type="button"

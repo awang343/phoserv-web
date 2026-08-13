@@ -1,21 +1,34 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getTagTree } from "@/lib/api";
+import {
+  deleteGalleryTag,
+  deleteTag,
+  getGalleryTagTree,
+  getTagTree,
+  renameGalleryTag,
+  renameTag,
+} from "@/lib/api";
 import { getConfig } from "@/lib/config";
 import { useServerConfig } from "@/lib/useServerConfig";
+import { useResizableWidth } from "@/lib/useResizableWidth";
 import { flattenTagPaths } from "@/lib/tags";
 import type { Photo, TagNode } from "@/lib/types";
 import TagSearch from "@/components/TagSearch";
 import TagExplorer from "@/components/TagExplorer";
 import PhotoGrid from "@/components/PhotoGrid";
+import ResizeHandle from "@/components/ResizeHandle";
 import UploadDropzone from "@/components/UploadDropzone";
+import ImportFromPathPanel from "@/components/ImportFromPathPanel";
+import DownloaderPanel from "@/components/DownloaderPanel";
 import SettingsPanel from "@/components/SettingsPanel";
+import GalleriesPanel from "@/components/GalleriesPanel";
 
-type Tab = "library" | "explorer" | "upload" | "trash" | "settings";
+type Tab = "library" | "galleries" | "explorer" | "upload" | "trash" | "settings";
 
 const TAB_LABELS: Record<Tab, string> = {
   library: "Library",
+  galleries: "Galleries",
   explorer: "Tag Explorer",
   upload: "Upload",
   trash: "Trash",
@@ -41,11 +54,17 @@ function NotConfiguredNotice({ onGoToSettings }: { onGoToSettings: () => void })
 
 export default function HomePage() {
   const [tree, setTree] = useState<TagNode[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [galleryTree, setGalleryTree] = useState<TagNode[]>([]);
+  // null = no search submitted yet (grid stays empty); "" = searched with no
+  // filter (show everything); anything else = the submitted boolean query.
+  const [searchQuery, setSearchQuery] = useState<string | null>(null);
+  const [gallerySelectedTag, setGallerySelectedTag] = useState<string | null>(null);
   const [photoCount, setPhotoCount] = useState(0);
   const [selectedPhotos, setSelectedPhotos] = useState<Photo[]>([]);
   const config = useServerConfig();
   const [tab, setTab] = useState<Tab>("library");
+  const [uploadMode, setUploadMode] = useState<"files" | "path" | "downloader">("files");
+  const sidebar = useResizableWidth({ initial: 432, min: 180, max: 960, panelSide: "right" });
 
   // Runs once on mount, client-side only, reading localStorage directly rather than
   // the hydration-safe synced snapshot — avoids racing React's hydration correction.
@@ -62,9 +81,13 @@ export default function HomePage() {
     getTagTree()
       .then(setTree)
       .catch(() => {});
+    getGalleryTagTree()
+      .then(setGalleryTree)
+      .catch(() => {});
   }, [config]);
 
   const tagSuggestions = useMemo(() => flattenTagPaths(tree), [tree]);
+  const galleryTagSuggestions = useMemo(() => flattenTagPaths(galleryTree), [galleryTree]);
 
   const selectedTagCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -78,12 +101,12 @@ export default function HomePage() {
     );
   }, [selectedPhotos]);
 
-  // Reset the displayed count during render (not an effect) when the tag
-  // filter changes, so the previous tag's stale count doesn't flash while
+  // Reset the displayed count during render (not an effect) when the search
+  // query changes, so the previous query's stale count doesn't flash while
   // the grid reloads. See https://react.dev/learn/you-might-not-need-an-effect
-  const [countedSelection, setCountedSelection] = useState(selected);
-  if (selected !== countedSelection) {
-    setCountedSelection(selected);
+  const [countedSelection, setCountedSelection] = useState(searchQuery);
+  if (searchQuery !== countedSelection) {
+    setCountedSelection(searchQuery);
     setPhotoCount(0);
   }
 
@@ -109,7 +132,30 @@ export default function HomePage() {
       {tab === "library" &&
         (config ? (
           <div className="flex flex-1 min-h-0">
-            <aside className="w-56 shrink-0 border-r border-neutral-200 dark:border-neutral-800 p-3 overflow-y-auto">
+            <main className="flex-1 flex flex-col min-h-0 p-4">
+              <h1 className="text-lg font-semibold mb-4 shrink-0">
+                {searchQuery === null ? "No search yet" : searchQuery || "All photos"}{" "}
+                <span className="text-sm font-normal text-neutral-500">
+                  ({photoCount} {photoCount === 1 ? "photo" : "photos"})
+                </span>
+              </h1>
+              <PhotoGrid
+                key={searchQuery ?? "__none__"}
+                query={searchQuery}
+                tagSuggestions={tagSuggestions}
+                onCountChange={setPhotoCount}
+                onSelectionChange={setSelectedPhotos}
+              />
+            </main>
+            <ResizeHandle
+              onPointerDown={sidebar.onPointerDown}
+              onPointerMove={sidebar.onPointerMove}
+              onPointerUp={sidebar.onPointerUp}
+            />
+            <aside
+              style={{ width: sidebar.width }}
+              className="shrink-0 border-l border-neutral-200 dark:border-neutral-800 p-3 overflow-y-auto"
+            >
               {selectedPhotos.length > 0 ? (
                 <>
                   <h2 className="text-xs font-semibold uppercase text-neutral-500 mb-2">
@@ -131,27 +177,28 @@ export default function HomePage() {
                   )}
                 </>
               ) : (
-                <>
-                  <h2 className="text-xs font-semibold uppercase text-neutral-500 mb-2">Tags</h2>
-                  <TagSearch tree={tree} selected={selected} onSelect={setSelected} />
-                </>
+                <TagSearch
+                  tagSuggestions={tagSuggestions}
+                  query={searchQuery}
+                  onSearch={setSearchQuery}
+                  onClear={() => setSearchQuery(null)}
+                />
               )}
             </aside>
-            <main className="flex-1 flex flex-col min-h-0 p-4">
-              <h1 className="text-lg font-semibold mb-4 shrink-0">
-                {selected ?? "All photos"}{" "}
-                <span className="text-sm font-normal text-neutral-500">
-                  ({photoCount} {photoCount === 1 ? "photo" : "photos"})
-                </span>
-              </h1>
-              <PhotoGrid
-                key={selected ?? "__all__"}
-                tag={selected}
-                tagSuggestions={tagSuggestions}
-                onCountChange={setPhotoCount}
-                onSelectionChange={setSelectedPhotos}
-              />
-            </main>
+          </div>
+        ) : (
+          <NotConfiguredNotice onGoToSettings={() => setTab("settings")} />
+        ))}
+
+      {tab === "galleries" &&
+        (config ? (
+          <div className="flex-1 min-h-0 flex flex-col p-4">
+            <GalleriesPanel
+              tag={gallerySelectedTag}
+              onClearTag={() => setGallerySelectedTag(null)}
+              photoTagSuggestions={tagSuggestions}
+              galleryTagSuggestions={galleryTagSuggestions}
+            />
           </div>
         ) : (
           <NotConfiguredNotice onGoToSettings={() => setTab("settings")} />
@@ -159,15 +206,33 @@ export default function HomePage() {
 
       {tab === "explorer" &&
         (config ? (
-          <div className="flex-1 p-4 max-w-2xl mx-auto w-full overflow-y-auto">
-            <TagExplorer
-              tree={tree}
-              onRenamed={setTree}
-              onSelectTag={(path) => {
-                setSelected(path);
-                setTab("library");
-              }}
-            />
+          <div className="flex-1 p-4 max-w-4xl mx-auto w-full overflow-y-auto flex flex-col sm:flex-row gap-8">
+            <div className="flex-1 min-w-0">
+              <h2 className="text-xs font-semibold uppercase text-neutral-500 mb-2">Photo tags</h2>
+              <TagExplorer
+                tree={tree}
+                onRenamed={setTree}
+                onRename={renameTag}
+                onDelete={deleteTag}
+                onSelectTag={(path) => {
+                  setSearchQuery(path);
+                  setTab("library");
+                }}
+              />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 className="text-xs font-semibold uppercase text-neutral-500 mb-2">Gallery tags</h2>
+              <TagExplorer
+                tree={galleryTree}
+                onRenamed={setGalleryTree}
+                onRename={renameGalleryTag}
+                onDelete={deleteGalleryTag}
+                onSelectTag={(path) => {
+                  setGallerySelectedTag(path);
+                  setTab("galleries");
+                }}
+              />
+            </div>
           </div>
         ) : (
           <NotConfiguredNotice onGoToSettings={() => setTab("settings")} />
@@ -176,7 +241,31 @@ export default function HomePage() {
       {tab === "upload" &&
         (config ? (
           <div className="flex-1 p-4 max-w-2xl mx-auto w-full overflow-y-auto">
-            <UploadDropzone tagSuggestions={tagSuggestions} />
+            <div className="flex gap-1 mb-4 border border-neutral-300 dark:border-neutral-700 rounded w-fit">
+              {(
+                [
+                  ["files", "Upload files"],
+                  ["path", "Import from server path"],
+                  ["downloader", "Download from URL"],
+                ] as const
+              ).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setUploadMode(mode)}
+                  className={`px-3 py-1.5 text-sm rounded ${
+                    uploadMode === mode
+                      ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
+                      : "text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {uploadMode === "files" && <UploadDropzone tagSuggestions={tagSuggestions} />}
+            {uploadMode === "path" && <ImportFromPathPanel tagSuggestions={tagSuggestions} />}
+            {uploadMode === "downloader" && <DownloaderPanel />}
           </div>
         ) : (
           <NotConfiguredNotice onGoToSettings={() => setTab("settings")} />

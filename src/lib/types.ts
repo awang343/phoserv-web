@@ -26,3 +26,66 @@ export interface TagNode {
   path: string;
   children: TagNode[];
 }
+
+export interface Gallery {
+  id: string;
+  title: string;
+  description: string | null;
+  cover_photo_id: string | null;
+  photo_count: number;
+  tags: string[];
+  created_at: string;
+}
+
+export interface GalleryDetail {
+  id: string;
+  title: string;
+  description: string | null;
+  tags: string[];
+  created_at: string;
+  photos: Photo[];
+}
+
+export interface ImportTagRule {
+  pattern: string;
+  template: string;
+}
+
+export interface ImportFileResult {
+  path: string;
+  status: "uploaded" | "tagged" | "skipped" | "error" | "dry_run";
+  tags: string[];
+  photo_id: string | null;
+  error: string | null;
+}
+
+export interface ImportSummary {
+  scanned: number;
+  uploaded: number;
+  tagged: number;
+  skipped: number;
+  errors: number;
+}
+
+export interface ImportPathResponse {
+  results: ImportFileResult[];
+  summary: ImportSummary;
+}
+
+export interface DownloaderInfo {
+  name: string;
+}
+
+export type DownloaderJobStatus = "running" | "completed" | "failed";
+
+export interface DownloaderJob {
+  id: string;
+  script: string;
+  url: string;
+  status: DownloaderJobStatus;
+  log: string[];
+  results: ImportFileResult[];
+  summary: ImportSummary;
+  started_at: string;
+  finished_at: string | null;
+}

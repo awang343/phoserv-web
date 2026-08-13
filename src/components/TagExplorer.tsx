@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import type { TagNode } from "@/lib/types";
-import { deleteTag, renameTag } from "@/lib/api";
 import { filterTagTree } from "@/lib/tags";
 
 function countDescendants(node: TagNode): number {
@@ -13,11 +12,15 @@ function TagExplorerNode({
   node,
   onRenamed,
   onSelectTag,
+  onRename,
+  onDelete,
   forceExpand,
 }: {
   node: TagNode;
   onRenamed: (tree: TagNode[]) => void;
   onSelectTag: (path: string) => void;
+  onRename: (id: number, name: string) => Promise<TagNode[]>;
+  onDelete: (id: number) => Promise<TagNode[]>;
   forceExpand: boolean;
 }) {
   const [editing, setEditing] = useState(false);
@@ -49,7 +52,7 @@ function TagExplorerNode({
     setSaving(true);
     setError(null);
     try {
-      const tree = await renameTag(node.id, name);
+      const tree = await onRename(node.id, name);
       onRenamed(tree);
       setEditing(false);
     } catch (e) {
@@ -63,7 +66,7 @@ function TagExplorerNode({
     setDeleting(true);
     setError(null);
     try {
-      const tree = await deleteTag(node.id);
+      const tree = await onDelete(node.id);
       onRenamed(tree);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete tag");
@@ -175,6 +178,8 @@ function TagExplorerNode({
               node={child}
               onRenamed={onRenamed}
               onSelectTag={onSelectTag}
+              onRename={onRename}
+              onDelete={onDelete}
               forceExpand={forceExpand}
             />
           ))}
@@ -188,10 +193,14 @@ export default function TagExplorer({
   tree,
   onRenamed,
   onSelectTag,
+  onRename,
+  onDelete,
 }: {
   tree: TagNode[];
   onRenamed: (tree: TagNode[]) => void;
   onSelectTag: (path: string) => void;
+  onRename: (id: number, name: string) => Promise<TagNode[]>;
+  onDelete: (id: number) => Promise<TagNode[]>;
 }) {
   const [query, setQuery] = useState("");
   const filtered = useMemo(() => filterTagTree(tree, query), [tree, query]);
@@ -217,6 +226,8 @@ export default function TagExplorer({
               node={node}
               onRenamed={onRenamed}
               onSelectTag={onSelectTag}
+              onRename={onRename}
+              onDelete={onDelete}
               forceExpand={query.trim() !== ""}
             />
           ))}

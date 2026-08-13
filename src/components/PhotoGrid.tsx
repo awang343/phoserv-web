@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   bulkAddTags,
@@ -47,7 +47,7 @@ const PhotoThumb = memo(function PhotoThumb({
 }: {
   photo: Photo;
   selected: boolean;
-  onSelect: () => void;
+  onSelect: (e: MouseEvent<HTMLButtonElement>) => void;
   onOpen: () => void;
 }) {
   const src = useAuthMedia(thumbnailPath(photo.id, "sm"));
@@ -78,13 +78,17 @@ const PhotoThumb = memo(function PhotoThumb({
 });
 
 export default function PhotoGrid({
-  tag = null,
+  query = null,
   trash = false,
   tagSuggestions = [],
   onCountChange,
   onSelectionChange,
 }: {
-  tag?: string | null;
+  // Boolean tag search query (see TagSearch). `null` means no search has
+  // been submitted yet, so the grid stays empty instead of fetching; ""
+  // means "search with no filter" (show every photo). Ignored when `trash`
+  // is set — the trash view always loads immediately.
+  query?: string | null;
   trash?: boolean;
   tagSuggestions?: string[];
   onCountChange?: (count: number) => void;
@@ -106,10 +110,15 @@ export default function PhotoGrid({
   const loadingRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  // Anchor for shift-click range selection — the index of the last item
+  // clicked without shift, so repeated shift-clicks extend from the same
+  // starting point (mirrors Finder/Explorer behavior).
+  const anchorIndexRef = useRef<number | null>(null);
   const columns = useColumnCount();
 
   const fetchPage = useCallback(
     async (reset: boolean) => {
+      if (!trash && query === null) return;
       if (loadingRef.current) return;
       if (!reset && !hasMoreRef.current) return;
       loadingRef.current = true;
@@ -117,7 +126,7 @@ export default function PhotoGrid({
       setError(null);
       try {
         const res = await listPhotos({
-          tag: tag ?? undefined,
+          q: trash ? undefined : query ?? undefined,
           trash,
           limit: PAGE_SIZE,
           cursor: reset ? undefined : cursorRef.current ?? undefined,
@@ -133,15 +142,21 @@ export default function PhotoGrid({
         setLoading(false);
       }
     },
-    [tag, trash],
+    [query, trash],
   );
 
   useEffect(() => {
     cursorRef.current = null;
     hasMoreRef.current = true;
     setSelectedIds(new Set());
+    anchorIndexRef.current = null;
+    if (!trash && query === null) {
+      setPhotos([]);
+      setTotal(0);
+      return;
+    }
     fetchPage(true);
-  }, [fetchPage]);
+  }, [fetchPage, trash, query]);
 
   useEffect(() => {
     onCountChange?.(total);
@@ -166,17 +181,33 @@ export default function PhotoGrid({
     return () => observer.disconnect();
   }, [fetchPage]);
 
-  const toggleSelected = useCallback((id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
+  const handleSelect = useCallback(
+    (index: number, id: string, e: MouseEvent<HTMLButtonElement>) => {
+      if (e.shiftKey && anchorIndexRef.current !== null) {
+        const anchor = anchorIndexRef.current;
+        const [lo, hi] = anchor < index ? [anchor, index] : [index, anchor];
+        setSelectedIds(new Set(photos.slice(lo, hi + 1).map((p) => p.id)));
+        return;
       }
-      return next;
-    });
-  }, []);
+      if (e.ctrlKey || e.metaKey) {
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(id)) {
+            next.delete(id);
+          } else {
+            next.add(id);
+          }
+          return next;
+        });
+      } else {
+        setSelectedIds((prev) =>
+          prev.size === 1 && prev.has(id) ? new Set() : new Set([id]),
+        );
+      }
+      anchorIndexRef.current = index;
+    },
+    [photos],
+  );
 
   const selectAll = useCallback(() => {
     setSelectedIds(new Set(photos.map((p) => p.id)));
@@ -184,6 +215,7 @@ export default function PhotoGrid({
 
   function clearSelection() {
     setSelectedIds(new Set());
+    anchorIndexRef.current = null;
     setShowBulkTagInput(false);
     setBulkTagValue("");
     setConfirmingBulkDelete(false);
@@ -365,7 +397,7 @@ export default function PhotoGrid({
                     key={photo.id}
                     photo={photo}
                     selected={selectedIds.has(photo.id)}
-                    onSelect={() => toggleSelected(photo.id)}
+                    onSelect={(e) => handleSelect(start + i, photo.id, e)}
                     onOpen={() => setLightboxIndex(start + i)}
                   />
                 ))}
@@ -374,7 +406,9 @@ export default function PhotoGrid({
           })}
         </div>
         {photos.length === 0 && !loading && (
-          <p className="text-sm text-neutral-500 mt-4">No photos found.</p>
+          <p className="text-sm text-neutral-500 mt-4">
+            {!trash && query === null ? "Enter a search above to see photos." : "No photos found."}
+          </p>
         )}
         <div ref={sentinelRef} className="h-1" />
         {hasMore && loading && (

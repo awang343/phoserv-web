@@ -13,6 +13,7 @@ import {
 import { useAuthMedia } from "@/lib/useAuthMedia";
 import type { Photo } from "@/lib/types";
 import TagChipsInput from "@/components/TagChipsInput";
+import GalleryPicker from "@/components/GalleryPicker";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -32,6 +33,7 @@ export default function PhotoLightbox({
   hasMore,
   trashMode = false,
   tagSuggestions = [],
+  pageLabel,
   onClose,
   onIndexChange,
   onPhotoUpdate,
@@ -43,6 +45,8 @@ export default function PhotoLightbox({
   hasMore: boolean;
   trashMode?: boolean;
   tagSuggestions?: string[];
+  /** Optional "Page X / N" style label shown near the close button — used by the gallery reader. */
+  pageLabel?: string;
   onClose: () => void;
   onIndexChange: (index: number) => void;
   onPhotoUpdate: (photo: Photo) => void;
@@ -55,6 +59,7 @@ export default function PhotoLightbox({
   const [actionError, setActionError] = useState<string | null>(null);
   const [seenPhotoId, setSeenPhotoId] = useState<string | undefined>(photo?.id);
   const [videoRequested, setVideoRequested] = useState(false);
+  const [showGalleryPicker, setShowGalleryPicker] = useState(false);
   // Images show the pre-generated "md" thumbnail instead of the full
   // original — much smaller download for the same on-screen size. Videos
   // show that same thumbnail until the user explicitly asks to play, since
@@ -68,6 +73,7 @@ export default function PhotoLightbox({
     setActionError(null);
     setConfirmingDelete(false);
     setVideoRequested(false);
+    setShowGalleryPicker(false);
   }
 
   async function handleRegenerateThumbnail() {
@@ -152,6 +158,9 @@ export default function PhotoLightbox({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4" onClick={onClose}>
+      {pageLabel && (
+        <span className="absolute top-4 left-4 text-white/70 text-sm">{pageLabel}</span>
+      )}
       <button
         type="button"
         onClick={onClose}
@@ -244,6 +253,15 @@ export default function PhotoLightbox({
               {pending === "regenerate" ? "Regenerating thumbnail…" : "Regenerate thumbnail"}
             </button>
 
+            <button
+              type="button"
+              onClick={() => setShowGalleryPicker(true)}
+              disabled={pending !== null}
+              className="px-3 py-1 text-sm rounded bg-neutral-800 text-white hover:bg-neutral-700 disabled:opacity-50 cursor-pointer"
+            >
+              Add to gallery
+            </button>
+
             {trashMode ? (
               <>
                 <button
@@ -315,6 +333,10 @@ export default function PhotoLightbox({
           </div>
         </div>
       </div>
+
+      {showGalleryPicker && (
+        <GalleryPicker photoId={photo.id} onClose={() => setShowGalleryPicker(false)} />
+      )}
     </div>
   );
 }
