@@ -81,6 +81,14 @@ const PhotoThumb = memo(function PhotoThumb({
               </span>
             </span>
           )}
+          {photo.tags.includes(TRASH_TAG) && (
+            <span
+              title="In trash"
+              className="absolute top-1 left-1 flex items-center justify-center w-5 h-5 rounded-full bg-black/60 text-white text-xs"
+            >
+              🗑
+            </span>
+          )}
         </div>
       )}
     </button>
@@ -239,8 +247,10 @@ const PhotoGrid = forwardRef<
     setBulkError(null);
   }
 
-  // Trashed items are permanently deleted (mirrors the lightbox's confirmed
-  // "delete permanently" action); everywhere else, "delete" just trashes them.
+  // In the dedicated Trash tab, trashed items are permanently deleted and
+  // drop out of the list. Everywhere else, "delete" just adds the trash tag
+  // — the photo stays visible in the (now trash-inclusive) library, marked
+  // with the trash icon, so it just gets updated in place.
   async function handleBulkDelete() {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
@@ -253,11 +263,13 @@ const PhotoGrid = forwardRef<
     try {
       if (trash) {
         await bulkDeletePermanently(ids);
+        setPhotos((prev) => prev.filter((p) => !selectedIds.has(p.id)));
+        setTotal((prev) => prev - ids.length);
       } else {
-        await bulkAddTags(ids, [TRASH_TAG]);
+        const updated = await bulkAddTags(ids, [TRASH_TAG]);
+        const byId = new Map(updated.map((p) => [p.id, p]));
+        setPhotos((prev) => prev.map((p) => byId.get(p.id) ?? p));
       }
-      setPhotos((prev) => prev.filter((p) => !selectedIds.has(p.id)));
-      setTotal((prev) => prev - ids.length);
       clearSelection();
     } catch (e) {
       setBulkError(e instanceof Error ? e.message : "Failed to delete photos");
@@ -450,16 +462,16 @@ const PhotoGrid = forwardRef<
           photos={photos}
           index={lightboxIndex}
           hasMore={hasMore}
-          trashMode={trash}
           tagSuggestions={tagSuggestions}
           onClose={() => setLightboxIndex(null)}
           onIndexChange={setLightboxIndex}
           onRequestMore={() => fetchPage(false)}
           onPhotoUpdate={(updated) => {
-            // A photo whose trash status no longer matches this view (e.g.
-            // just trashed while browsing the library, or restored while
-            // browsing trash) drops out of the current list entirely.
-            const stillBelongs = updated.tags.includes(TRASH_TAG) === trash;
+            // The dedicated Trash tab shows only trashed photos, so a
+            // restore drops the photo out of that list. Every other view
+            // (the trash-inclusive library) just updates the photo in
+            // place — trashing/restoring it there only changes its icon.
+            const stillBelongs = !trash || updated.tags.includes(TRASH_TAG);
             if (stillBelongs) {
               setPhotos((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
             } else {

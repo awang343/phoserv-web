@@ -31,7 +31,6 @@ export default function PhotoLightbox({
   photos,
   index,
   hasMore,
-  trashMode = false,
   tagSuggestions = [],
   pageLabel,
   onClose,
@@ -43,7 +42,6 @@ export default function PhotoLightbox({
   photos: Photo[];
   index: number;
   hasMore: boolean;
-  trashMode?: boolean;
   tagSuggestions?: string[];
   /** Optional "Page X / N" style label shown near the close button — used by the gallery reader. */
   pageLabel?: string;
@@ -156,6 +154,11 @@ export default function PhotoLightbox({
 
   if (!photo) return null;
 
+  // Whether to show "Restore"/"Delete permanently" vs. plain "Delete"
+  // depends on the photo's own trash status, not which tab it's being
+  // viewed from — the library now shows trashed photos inline too.
+  const isTrashed = photo.tags.includes(TRASH_TAG);
+
   return (
     <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4" onClick={onClose}>
       {pageLabel && (
@@ -262,7 +265,7 @@ export default function PhotoLightbox({
               Add to gallery
             </button>
 
-            {trashMode ? (
+            {isTrashed ? (
               <>
                 <button
                   type="button"
