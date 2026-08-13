@@ -31,7 +31,7 @@ export default function DownloaderPanel() {
   const [downloaders, setDownloaders] = useState<DownloaderInfo[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selected, setSelected] = useState("");
-  const [url, setUrl] = useState("");
+  const [urlsText, setUrlsText] = useState("");
   const [galleryName, setGalleryName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [job, setJob] = useState<DownloaderJob | null>(null);
@@ -96,8 +96,12 @@ export default function DownloaderPanel() {
       setError("Select a downloader script.");
       return;
     }
-    if (!url.trim()) {
-      setError("Enter a URL.");
+    const urls = urlsText
+      .split("\n")
+      .map((u) => u.trim())
+      .filter(Boolean);
+    if (urls.length === 0) {
+      setError("Enter at least one URL.");
       return;
     }
     setStarting(true);
@@ -106,7 +110,7 @@ export default function DownloaderPanel() {
     setGalleryStatus(null);
     handledGalleryJobId.current = null;
     try {
-      const { job_id } = await runDownloader(selected, url.trim());
+      const { job_id } = await runDownloader(selected, urls);
       const initial = await getDownloaderJob(job_id);
       setJob(initial);
     } catch (err) {
@@ -156,15 +160,15 @@ export default function DownloaderPanel() {
           </div>
 
           <div>
-            <label htmlFor="downloader-url" className="block text-sm font-medium mb-1">
-              URL
+            <label htmlFor="downloader-urls" className="block text-sm font-medium mb-1">
+              URLs (one per line, run in sequence)
             </label>
-            <input
-              id="downloader-url"
-              type="text"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://example.com/..."
+            <textarea
+              id="downloader-urls"
+              rows={4}
+              value={urlsText}
+              onChange={(e) => setUrlsText(e.target.value)}
+              placeholder={"https://example.com/one\nhttps://example.com/two"}
               className="w-full rounded border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm font-mono"
             />
           </div>
@@ -203,8 +207,12 @@ export default function DownloaderPanel() {
       {job && (
         <div className="space-y-2">
           <p className="text-sm text-neutral-600 dark:text-neutral-400">
-            {job.status === "running" && "Running…"}
-            {job.status === "completed" && "Completed"}
+            {job.status === "running" &&
+              (job.current_index !== null
+                ? `Running… (${job.current_index + 1}/${job.urls.length}) ${job.urls[job.current_index]}`
+                : "Running…")}
+            {job.status === "completed" &&
+              `Completed (${job.urls.length} url${job.urls.length === 1 ? "" : "s"})`}
             {job.status === "failed" && "Failed"}
             {" · scanned "}
             {job.summary.scanned} · uploaded {job.summary.uploaded} · tagged {job.summary.tagged} · skipped{" "}

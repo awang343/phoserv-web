@@ -127,13 +127,14 @@ export async function listDownloaders(): Promise<DownloaderInfo[]> {
   return unwrap(res);
 }
 
-// Starts a downloader script as a background job on the server and returns
-// its id immediately; poll getDownloaderJob to track progress.
-export async function runDownloader(name: string, url: string): Promise<{ job_id: string }> {
+// Starts a downloader script as a background job on the server, run once per
+// url in sequence, and returns its id immediately; poll getDownloaderJob to
+// track progress.
+export async function runDownloader(name: string, urls: string[]): Promise<{ job_id: string }> {
   const res = await fetch(apiUrl(`/downloaders/${encodeURIComponent(name)}/run`), {
     method: "POST",
     headers: authHeaders({ "content-type": "application/json" }),
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ urls }),
   });
   return unwrap(res);
 }

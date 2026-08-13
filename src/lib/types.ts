@@ -82,7 +82,10 @@ export type DownloaderJobStatus = "running" | "completed" | "failed";
 export interface DownloaderJob {
   id: string;
   script: string;
-  url: string;
+  urls: string[];
+  // Index into `urls` of the one currently being processed; null once every
+  // url has been run.
+  current_index: number | null;
   status: DownloaderJobStatus;
   log: string[];
   results: ImportFileResult[];
