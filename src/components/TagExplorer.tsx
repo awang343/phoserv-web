@@ -150,7 +150,7 @@ function TagExplorerNode({
               onClick={() => onSelectTag(node.path)}
               className="text-sm text-left hover:text-blue-600 hover:underline cursor-pointer"
             >
-              {node.name}
+              {node.name} <span className="text-neutral-500">({node.count})</span>
             </button>
             <button
               type="button"

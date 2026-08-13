@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   deleteGalleryTag,
   deleteTag,
@@ -16,7 +16,7 @@ import { flattenTagPaths } from "@/lib/tags";
 import type { Photo, TagNode } from "@/lib/types";
 import TagSearch from "@/components/TagSearch";
 import TagExplorer from "@/components/TagExplorer";
-import PhotoGrid from "@/components/PhotoGrid";
+import PhotoGrid, { type PhotoGridHandle } from "@/components/PhotoGrid";
 import ResizeHandle from "@/components/ResizeHandle";
 import UploadDropzone from "@/components/UploadDropzone";
 import ImportFromPathPanel from "@/components/ImportFromPathPanel";
@@ -61,6 +61,8 @@ export default function HomePage() {
   const [gallerySelectedTag, setGallerySelectedTag] = useState<string | null>(null);
   const [photoCount, setPhotoCount] = useState(0);
   const [selectedPhotos, setSelectedPhotos] = useState<Photo[]>([]);
+  const [removingSelectedTag, setRemovingSelectedTag] = useState<string | null>(null);
+  const photoGridRef = useRef<PhotoGridHandle>(null);
   const config = useServerConfig();
   const [tab, setTab] = useState<Tab>("library");
   const [uploadMode, setUploadMode] = useState<"files" | "path" | "downloader">("files");
@@ -101,6 +103,15 @@ export default function HomePage() {
     );
   }, [selectedPhotos]);
 
+  async function handleRemoveSelectedTag(tag: string) {
+    setRemovingSelectedTag(tag);
+    try {
+      await photoGridRef.current?.removeTagFromSelected(tag);
+    } finally {
+      setRemovingSelectedTag(null);
+    }
+  }
+
   // Reset the displayed count during render (not an effect) when the search
   // query changes, so the previous query's stale count doesn't flash while
   // the grid reloads. See https://react.dev/learn/you-might-not-need-an-effect
@@ -140,6 +151,7 @@ export default function HomePage() {
                 </span>
               </h1>
               <PhotoGrid
+                ref={photoGridRef}
                 key={searchQuery ?? "__none__"}
                 query={searchQuery}
                 tagSuggestions={tagSuggestions}
@@ -165,9 +177,15 @@ export default function HomePage() {
                     <ul className="space-y-1 text-sm">
                       {selectedTagCounts.map(([t, count]) => (
                         <li key={t} className="flex items-center justify-between gap-2">
-                          <span className="truncate" title={t}>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveSelectedTag(t)}
+                            disabled={removingSelectedTag === t}
+                            title={`Remove "${t}" from selected photos`}
+                            className="truncate text-left hover:text-red-600 hover:line-through cursor-pointer disabled:opacity-50"
+                          >
                             {t}
-                          </span>
+                          </button>
                           <span className="text-neutral-500 shrink-0">{count}</span>
                         </li>
                       ))}

@@ -24,6 +24,7 @@ export interface TagNode {
   id: number;
   name: string;
   path: string;
+  count: number;
   children: TagNode[];
 }
 

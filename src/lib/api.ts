@@ -181,6 +181,15 @@ export async function bulkAddTags(photoIds: string[], tags: string[]): Promise<P
   return unwrap(res);
 }
 
+export async function bulkRemoveTags(photoIds: string[], tags: string[]): Promise<Photo[]> {
+  const res = await fetch(apiUrl("/photos/tags"), {
+    method: "DELETE",
+    headers: authHeaders({ "content-type": "application/json" }),
+    body: JSON.stringify({ photo_ids: photoIds, tags }),
+  });
+  return unwrap(res);
+}
+
 export async function bulkDeletePermanently(photoIds: string[]): Promise<void> {
   const res = await fetch(apiUrl("/photos/bulk-delete"), {
     method: "POST",

@@ -1,10 +1,20 @@
 "use client";
 
-import { memo, useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
+import {
+  forwardRef,
+  memo,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   bulkAddTags,
   bulkDeletePermanently,
+  bulkRemoveTags,
   listPhotos,
   thumbnailPath,
   TRASH_TAG,
@@ -77,23 +87,30 @@ const PhotoThumb = memo(function PhotoThumb({
   );
 });
 
-export default function PhotoGrid({
-  query = null,
-  trash = false,
-  tagSuggestions = [],
-  onCountChange,
-  onSelectionChange,
-}: {
-  // Boolean tag search query (see TagSearch). `null` means no search has
-  // been submitted yet, so the grid stays empty instead of fetching; ""
-  // means "search with no filter" (show every photo). Ignored when `trash`
-  // is set — the trash view always loads immediately.
-  query?: string | null;
-  trash?: boolean;
-  tagSuggestions?: string[];
-  onCountChange?: (count: number) => void;
-  onSelectionChange?: (selected: Photo[]) => void;
-}) {
+export interface PhotoGridHandle {
+  // Removes `tag` from every currently selected photo. Photos in the
+  // selection that never had the tag are left untouched — the backend
+  // delete is a per-photo no-op when the tag isn't present.
+  removeTagFromSelected: (tag: string) => Promise<void>;
+}
+
+const PhotoGrid = forwardRef<
+  PhotoGridHandle,
+  {
+    // Boolean tag search query (see TagSearch). `null` means no search has
+    // been submitted yet, so the grid stays empty instead of fetching; ""
+    // means "search with no filter" (show every photo). Ignored when `trash`
+    // is set — the trash view always loads immediately.
+    query?: string | null;
+    trash?: boolean;
+    tagSuggestions?: string[];
+    onCountChange?: (count: number) => void;
+    onSelectionChange?: (selected: Photo[]) => void;
+  }
+>(function PhotoGrid(
+  { query = null, trash = false, tagSuggestions = [], onCountChange, onSelectionChange },
+  ref,
+) {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -266,6 +283,19 @@ export default function PhotoGrid({
       setBulkPending(false);
     }
   }
+
+  const removeTagFromSelected = useCallback(
+    async (tag: string) => {
+      const ids = Array.from(selectedIds);
+      if (ids.length === 0) return;
+      const updated = await bulkRemoveTags(ids, [tag]);
+      const byId = new Map(updated.map((p) => [p.id, p]));
+      setPhotos((prev) => prev.map((p) => byId.get(p.id) ?? p));
+    },
+    [selectedIds],
+  );
+
+  useImperativeHandle(ref, () => ({ removeTagFromSelected }), [removeTagFromSelected]);
 
   const hasMore = photos.length < total;
   const rowCount = Math.ceil(photos.length / columns);
@@ -447,4 +477,6 @@ export default function PhotoGrid({
       )}
     </div>
   );
-}
+});
+
+export default PhotoGrid;
